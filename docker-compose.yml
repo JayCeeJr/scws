@@ -1,0 +1,21 @@
+version: "2.4"
+services:
+  nginx:
+    build:
+      context: ./nginx/.
+    ports:
+      - "8888:80"
+  scws:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SCWS_INDEX_HTML: "_______.html"
+      SCWS_S3_BUCKET: "${S3_BUCKET}"
+      SCWS_S3_PREFIX: "/"
+      SCWS_S3_AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      SCWS_S3_AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      SCWS_S3_AWS_REGION: "us-east-1"
+      SCWS_STORAGE: "s3"
+    ports:
+      - "8080:8080"

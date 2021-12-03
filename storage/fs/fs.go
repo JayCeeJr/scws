@@ -32,6 +32,10 @@ type FSStorage struct {
 	//scwsConfig *config.Config
 }
 
+func (s *FSStorage) ServeIndex(c, StaticSiteConfig, w http.ResponseWriter, r *http.Request) {
+	panic("implement me")
+}
+
 type indexDir struct {
 	dir   string
 	index string

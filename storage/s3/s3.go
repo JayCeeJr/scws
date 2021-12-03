@@ -4,17 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"path"
+	"path/filepath"
+	"scws/common"
 	"scws/common/config"
+	"strings"
+	"time"
 
 	"github.com/araddon/gou"
 	"github.com/lytics/cloudstorage"
 	"github.com/lytics/cloudstorage/awss3"
-)
-
-const (
-	healthPath = "/_/health"
 )
 
 func New(c *config.Config) (*S3Storage, error) {
@@ -64,23 +65,19 @@ type object struct {
 }
 
 func (o *object) getObject(name string) (cloudstorage.Object, error) {
-	obj, err := o.store.Get(context.Background(), path.Join(o.prefix, name))
+obj, err := o.store.Get(context.Background(), path.Join(o.prefix, name))
 	if err != nil {
 		log.Println("s3.getObject", err.Error())
 		return nil, err
 	}
+
 	return obj, nil
 }
 
 func (o *object) Open(name string) (http.File, error) {
 	obj, err := o.getObject(name)
 	if err != nil {
-		//log.Println("s3.Open", err.Error())
-		obj, err = o.getObject(o.index)
-		if err != nil {
-			log.Println("s3.Open", err.Error())
-			return nil, err
-		}
+		return nil, err
 	}
 	f, err := obj.Open(cloudstorage.ReadOnly)
 	if err != nil {
@@ -90,18 +87,54 @@ func (o *object) Open(name string) (http.File, error) {
 	return f, nil
 }
 
-func (s *S3Storage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == healthPath {
-		healthHandler(w, r)
+func (s *S3Storage) ServeHTTP(c common.StaticSiteConfig, w http.ResponseWriter, r *http.Request) {
+	eTag := c.ETag
+	staticFilePath := staticFilePath(r)
+	o := s.newObject()
+	fileHandle, error := o.Open(filepath.Join(c.Path, staticFilePath))
+	if error != nil {
+		fileHandle, error = o.Open(filepath.Join(c.Path, c.Error))
+		if serve404OnErr(error, w) {
+			return
+		}
+	}
+	defer fileHandle.Close()
+	fileInfo, error := fileHandle.Stat()
+	if serve404OnErr(error, w) {
 		return
 	}
-	o := s.newObject()
-
-	http.FileServer(o).ServeHTTP(w, r)
+	w.Header().Set("Etag", fmt.Sprintf("\"%s\"", eTag))
+	w.Header().Set("Cache-Control", "public must-revalidate stale-if-error=86400")
+	w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(staticFilePath)))
+	http.ServeContent(w, r, fileInfo.Name(), time.Unix(0,0), fileHandle)
 }
-
-func (s *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, filePath string) {
-	s.ServeHTTP(w, r)
+func staticFilePath(request *http.Request) string {
+	return request.URL.Path
+}
+func serve404OnErr(err error, responseWriter http.ResponseWriter) bool {
+	if err != nil {
+		serve404(responseWriter)
+		return true
+	}
+	return false
+}
+func serve404(responseWriter http.ResponseWriter) {
+	responseWriter.WriteHeader(http.StatusNotFound)
+	template := []byte("Error 404 - Page Not Found.")
+	fmt.Fprint(responseWriter, string(template))
+}
+func (s *S3Storage) ServeIndex(c common.StaticSiteConfig, w http.ResponseWriter, r *http.Request) {
+	staticFilePath := r.URL.Path
+	if !strings.HasPrefix(staticFilePath, "/") {
+		staticFilePath = "/" + staticFilePath
+		r.URL.Path = staticFilePath
+	}
+	if strings.HasSuffix(staticFilePath, "/") {
+		staticFilePath = staticFilePath + c.Index
+		r.URL.Path = staticFilePath
+	}
+	r.URL.Path = staticFilePath
+	s.ServeHTTP(c, w, r)
 }
 
 func (s *S3Storage) newObject() *object {
@@ -114,9 +147,4 @@ func (s *S3Storage) newObject() *object {
 
 func (s *S3Storage) GetName() string {
 	return "s3"
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "OK")
 }
