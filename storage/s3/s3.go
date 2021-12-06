@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/textproto"
 	"path"
 	"path/filepath"
 	"scws/common"
@@ -35,7 +36,7 @@ func New(c *config.Config) (*S3Storage, error) {
 
 	conf := &cloudstorage.Config{
 		Type:       awss3.StoreType,
-		AuthMethod: awss3.AuthAccessKey,
+		AuthMethod: "SharedCredentials",
 		Bucket:     s.config.Bucket,
 		Settings:   make(gou.JsonHelper),
 		Region:     s3Config.AwsRegion,
@@ -86,8 +87,91 @@ func (o *object) Open(name string) (http.File, error) {
 	}
 	return f, nil
 }
+// scanETag determines if a syntactically valid ETag is present at s. If so,
+// the ETag and remaining text after consuming ETag is returned. Otherwise,
+// it returns "", "".
+func scanETag(s string) (etag string, remain string) {
+	s = textproto.TrimString(s)
+	start := 0
+	if strings.HasPrefix(s, "W/") {
+		start = 2
+	}
+	if len(s[start:]) < 2 || s[start] != '"' {
+		return "", ""
+	}
+	// ETag is either W/"text" or "text".
+	// See RFC 7232 2.3.
+	for i := start + 1; i < len(s); i++ {
+		c := s[i]
+		switch {
+		// Character values allowed in ETags.
+		case c == 0x21 || c >= 0x23 && c <= 0x7E || c >= 0x80:
+		case c == '"':
+			return s[:i+1], s[i+1:]
+		default:
+			return "", ""
+		}
+	}
+	return "", ""
+}
+// etagWeakMatch reports whether a and b match using weak ETag comparison.
+// Assumes a and b are valid ETags.
+func etagWeakMatch(a, b string) bool {
+	return strings.TrimPrefix(a, "W/") == strings.TrimPrefix(b, "W/")
+}
+func checkIfNoneMatch(w http.ResponseWriter, r *http.Request) bool {
+	inm := r.Header.Get("If-None-Match")
+	if inm == "" {
+		return false
+	}
+	buf := inm
+	for {
+		buf = textproto.TrimString(buf)
+		if len(buf) == 0 {
+			break
+		}
+		if buf[0] == ',' {
+			buf = buf[1:]
+			continue
+		}
+		if buf[0] == '*' {
+			return false
+		}
+		etag, remain := scanETag(buf)
+		if etag == "" {
+			break
+		}
+		if etagWeakMatch(etag, w.Header().Get("Etag")) {
+			return false
+		}
+		buf = remain
+	}
+	return true
+}
+func writeNotModified(w http.ResponseWriter) {
+	// RFC 7232 section 4.1:
+	// a sender SHOULD NOT generate representation metadata other than the
+	// above listed fields unless said metadata exists for the purpose of
+	// guiding cache updates (e.g., Last-Modified might be useful if the
+	// response does not have an ETag field).
+	h := w.Header()
+	delete(h, "Content-Type")
+	delete(h, "Content-Length")
+	if h.Get("Etag") != "" {
+		delete(h, "Last-Modified")
+	}
+	w.WriteHeader(http.StatusNotModified)
+}
 
 func (s *S3Storage) ServeHTTP(c common.StaticSiteConfig, w http.ResponseWriter, r *http.Request) {
+	if checkIfNoneMatch(w, r) {
+		if r.Method == "GET" || r.Method == "HEAD" {
+			writeNotModified(w)
+			return
+		} else {
+			w.WriteHeader(http.StatusPreconditionFailed)
+		}
+	}
 	eTag := c.ETag
 	staticFilePath := staticFilePath(r)
 	o := s.newObject()

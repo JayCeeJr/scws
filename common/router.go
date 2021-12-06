@@ -14,10 +14,10 @@ func Route(hostname string) StaticSiteConfig {
 	hostname = strings.ToLower(hostname)
 	routerMap := map[string]StaticSiteConfig{
 		"bar.demo.com": {
-			Path:  "sitebar",
+			Path:  "/",
 			Index: "index.html",
 			Error: "error.html",
-			ETag: "33a64df551425fcc55e4d42a148795d9f25f89d4",
+			ETag: "33a64df551425fcc55e4d42a1487165d9f25f89d4",
 		},
 		"foo.demo.com": {
 			Path:  "sitefoo",

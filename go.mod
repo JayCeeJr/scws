@@ -14,3 +14,5 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible
 	go.uber.org/atomic v1.9.0 // indirect
 )
+
+replace github.com/lytics/cloudstorage v0.2.9 => github.com/JayCeeJr/cloudstorage v0.2.10-0.20211206173816-8f220ee37a11

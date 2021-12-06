@@ -1,0 +1,33 @@
+@startuml
+title Static Website Hosting
+participant "User" as USER
+participant "CloudFlare" as CF
+participant "scws" as SCWS
+participant "S3" as S3
+
+== No Changes ==
+USER -> CF : Send http request
+CF -> SCWS : Send http request (ETag/LastMod)
+SCWS -> SCWS : Retrieve ETag for last deployment
+SCWS -> SCWS : Verify ETag (it has not changed)
+SCWS -> CF : Return 304 Not Modified
+CF -> USER : Return 200 + file w/ ETag from Last Deployment
+
+== With Changes ==
+USER -> CF : Send http request
+CF -> SCWS : Send http request (ETag/LastMod)
+SCWS -> SCWS : Retrieve ETag for last deployment
+SCWS -> SCWS : Verify ETag (it has changed)
+SCWS -> S3 : Request File
+S3 -> SCWS : Return File
+SCWS -> CF : Return 200 + file w/ ETag from Last Deployment
+CF -> USER : Return 200 + file w/ ETag from Last Deployment
+
+== No Changes Return User ==
+USER -> CF : Send http request (ETag/LastMod)
+CF -> SCWS : Send http request (ETag/LastMod)
+SCWS -> SCWS : Retrieve ETag for last deployment
+SCWS -> SCWS : Verify ETag (it has not changed)
+SCWS -> CF : Return 304 Not Modified
+CF -> USER : Return 304 Not Modified
+@enduml

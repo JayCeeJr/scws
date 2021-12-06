@@ -1,0 +1,14 @@
+---
+kind: kubernetes
+app: scwspoc
+type: web
+team: training
+docker_image: scwspoc
+container_port: 8080
+healthcheck:
+  path: /_/metrics
+dns:
+  zone: cglcloud
+  name: scwspoc
+storage:
+  type: object

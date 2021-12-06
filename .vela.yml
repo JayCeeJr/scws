@@ -1,0 +1,23 @@
+---
+version: "1"
+steps:
+  - name: build-docker
+    image: docker-utilities.binrepo.cglcloud.in/enablementtools/docker-plugin:3-stable
+    ruleset:
+      if:
+        branch: [develop, dev-test/*, release/*, hotfix/*, master]
+        event: [pull_request, push, tag]
+    parameters:
+      repo: scwspoc
+      skip_existing: true
+      tags: ${VELA_BUILD_COMMIT:0:7}
+  - name: captain-deploy-dev
+    image: docker-utilities.binrepo.cglcloud.in/captain:1-stable
+    ruleset:
+      if:
+        branch: [develop]
+        event: [pull_request]
+    parameters:
+      env: dev
+      version: ${VELA_BUILD_COMMIT:0:7}
+      run_apply: true
