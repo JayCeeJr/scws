@@ -13,7 +13,7 @@ func Route(hostname string) StaticSiteConfig {
 	hostname = strings.Split(hostname, ":")[0]
 	hostname = strings.ToLower(hostname)
 	routerMap := map[string]StaticSiteConfig{
-		"bar.demo.com": {
+		"scwspoc.dev.cglcloud.in": {
 			Path:  "/",
 			Index: "index.html",
 			Error: "error.html",
